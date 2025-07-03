@@ -12,7 +12,7 @@ TESTS = [
     ("Register Devices", test_cases.register_devices),
     ("Post Heart Rate", test_cases.post_heart_rate),
     ("Post Blood Pressure", test_cases.post_blood_pressure),
-    ("Post Invalid Patient (403)", test_cases.post_invalid_patient),
+    ("Post New Patient", test_cases.post_new_patient),
     ("Get Heart Rate Readings", test_cases.get_heart_rate),
     ("Get Blood Pressure Readings", test_cases.get_blood_pressure),
     ("Test Concurrent Ingestion", test_cases.concurrent_ingestion),

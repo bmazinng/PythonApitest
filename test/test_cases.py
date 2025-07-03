@@ -6,15 +6,16 @@ import asyncio
 
 console = Console()
 
-API_URL = "http://127.0.0.1:8000"#"http://13.60.32.29"
+API_URL = "http://127.0.0.1:8000"
 
 PATIENT_ID = "P001"
 DEVICES = [
-    {"device_id": "HR001", "device_type": "heart_rate", "patient_id": "P001"},
-    {"device_id": "BP001", "device_type": "blood_pressure", "patient_id": "P001"},
-    {"device_id": "HRAGRE", "device_type": "heart_rate", "patient_id": "P001"},
-    {"device_id": "BPAGRE", "device_type": "blood_pressure", "patient_id": "P001"},
+    {"device_id": "HR001", "device_type": "heart_rate"},
+    {"device_id": "BP001", "device_type": "blood_pressure"},
+    {"device_id": "HRAGRE", "device_type": "heart_rate"},
+    {"device_id": "BPAGRE", "device_type": "blood_pressure"},
 ]
+
 TOKENS = {}
 
 # Known test timestamps
@@ -65,19 +66,18 @@ async def post_blood_pressure():
         res = await client.post(f"{API_URL}/ingest", json=payload, headers=headers)
         res.raise_for_status()
 
-async def post_invalid_patient():
+async def post_new_patient():
     async with httpx.AsyncClient() as client:
         headers = {"Authorization": f"Bearer {TOKENS['HR001']}"}
         payload = {
             "device_id": "HR001",
-            "patient_id": "UNKNOWN",
+            "patient_id": "NEW",
             "timestamp": datetime.now().isoformat(),
             "heart_rate": 90,
             "measurement_quality": "good"
         }
         res = await client.post(f"{API_URL}/ingest", json=payload, headers=headers)
-        if res.status_code != 403:
-            raise AssertionError("Expected 403 for unassigned patient.")
+        res.raise_for_status()
 
 async def get_heart_rate():
     async with httpx.AsyncClient() as client:
@@ -152,8 +152,7 @@ async def insert_known_bp_values():
 
 
 async def validate_hr_aggregates():
-    """Check avg, min, max for HR device"""
-    headers = {"Authorization": f"Bearer {TOKENS["HRAGRE"]}"}
+    headers = {"Authorization": f"Bearer {TOKENS['HRAGRE']}"}
     expected = {
         "avg": round(sum([60, 70, 80]) / 3),
         "min": 60,
@@ -168,15 +167,14 @@ async def validate_hr_aggregates():
             res = await client.get(url, headers=headers)
             res.raise_for_status()
             data_list = res.json()
-            if not data_list:
-                raise AssertionError(f"No data returned for {agg} in time range")
-            data = data_list[0]
-            if data["heart_rate"] != exp_val:
-                raise AssertionError(f"HeartRate {agg} expected {exp_val}, got {data['heart_rate']}")
+            target = next((d for d in data_list if d["patient_id"] == PATIENT_ID), None)
+            if not target:
+                raise AssertionError(f"No data returned for patient {PATIENT_ID} during {agg}")
+            if target["heart_rate"] != exp_val:
+                raise AssertionError(f"HeartRate {agg} expected {exp_val}, got {target['heart_rate']}")
 
 async def validate_bp_aggregates():
-    """Check avg, min, max for BP device"""
-    headers = {"Authorization": f"Bearer {TOKENS["BPAGRE"]}"}
+    headers = {"Authorization": f"Bearer {TOKENS['BPAGRE']}"}
     expected = {
         "avg": {
             "systolic": round((120 + 110 + 130) / 3),
@@ -203,9 +201,9 @@ async def validate_bp_aggregates():
             res = await client.get(url, headers=headers)
             res.raise_for_status()
             data_list = res.json()
-            if not data_list:
-                raise AssertionError(f"No data returned for {agg} in time range")
-            data = data_list[0]
+            target = next((d for d in data_list if d["patient_id"] == PATIENT_ID), None)
+            if not target:
+                raise AssertionError(f"No data returned for patient {PATIENT_ID} during {agg}")
             for field, expected_val in expected_vals.items():
-                if data[field] != expected_val:
-                    raise AssertionError(f"BloodPressure {agg} {field} expected {expected_val}, got {data[field]}")
+                if target[field] != expected_val:
+                    raise AssertionError(f"BloodPressure {agg} {field} expected {expected_val}, got {target[field]}")
