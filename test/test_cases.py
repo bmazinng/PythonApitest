@@ -1,19 +1,26 @@
 import httpx
-from datetime import datetime
+from datetime import datetime, timedelta
 from rich.console import Console
 import time
 import asyncio
 
 console = Console()
 
-API_URL = "http://13.60.32.29"
+API_URL = "http://127.0.0.1:8000"#"http://13.60.32.29"
 
 PATIENT_ID = "P001"
 DEVICES = [
-    {"device_id": "HR001", "device_type": "heart_rate"},
-    {"device_id": "BP001", "device_type": "blood_pressure"},
+    {"device_id": "HR001", "device_type": "heart_rate", "patient_id": "P001"},
+    {"device_id": "BP001", "device_type": "blood_pressure", "patient_id": "P001"},
+    {"device_id": "HRAGRE", "device_type": "heart_rate", "patient_id": "P001"},
+    {"device_id": "BPAGRE", "device_type": "blood_pressure", "patient_id": "P001"},
 ]
 TOKENS = {}
+
+# Known test timestamps
+NOW = datetime.utcnow().replace(microsecond=0)
+RANGE_START = NOW - timedelta(minutes=5)
+RANGE_END = NOW + timedelta(minutes=5)
 
 async def check_server():
     try:
@@ -108,3 +115,97 @@ async def db_timing_test():
     console.print("DB response time= "+str(time.time() - start))
     res.raise_for_status()
 
+async def insert_known_hr_values():
+    """Insert predictable heart rate readings"""
+    headers = {"Authorization": f"Bearer {TOKENS["HRAGRE"]}"}
+    values = [60, 70, 80]
+    async with httpx.AsyncClient() as client:
+        for i, val in enumerate(values):
+            payload = {
+                "device_id": "HRAGRE",
+                "patient_id": PATIENT_ID,
+                "timestamp": (NOW - timedelta(seconds=i * 10)).isoformat(),
+                "heart_rate": val,
+                "measurement_quality": "good"
+            }
+            await client.post(f"{API_URL}/ingest", json=payload, headers=headers)
+    return values
+
+async def insert_known_bp_values():
+    """Insert predictable blood pressure readings"""
+    headers = {"Authorization": f"Bearer {TOKENS["BPAGRE"]}"}
+    values = [
+        {"systolic": 120, "diastolic": 80, "pulse": 70},
+        {"systolic": 110, "diastolic": 75, "pulse": 65},
+        {"systolic": 130, "diastolic": 85, "pulse": 75},
+    ]
+    async with httpx.AsyncClient() as client:
+        for i, val in enumerate(values):
+            payload = {
+                "device_id": "BPAGRE",
+                "patient_id": PATIENT_ID,
+                "timestamp": (NOW - timedelta(seconds=i * 10)).isoformat(),
+                **val
+            }
+            await client.post(f"{API_URL}/ingest", json=payload, headers=headers)
+    return values
+
+
+async def validate_hr_aggregates():
+    """Check avg, min, max for HR device"""
+    headers = {"Authorization": f"Bearer {TOKENS["HRAGRE"]}"}
+    expected = {
+        "avg": round(sum([60, 70, 80]) / 3),
+        "min": 60,
+        "max": 80
+    }
+    async with httpx.AsyncClient() as client:
+        for agg, exp_val in expected.items():
+            url = (
+                f"{API_URL}/readings/hr?"
+                f"aggregate={agg}&from_time={RANGE_START.isoformat()}&to_time={RANGE_END.isoformat()}"
+            )
+            res = await client.get(url, headers=headers)
+            res.raise_for_status()
+            data_list = res.json()
+            if not data_list:
+                raise AssertionError(f"No data returned for {agg} in time range")
+            data = data_list[0]
+            if data["heart_rate"] != exp_val:
+                raise AssertionError(f"HeartRate {agg} expected {exp_val}, got {data['heart_rate']}")
+
+async def validate_bp_aggregates():
+    """Check avg, min, max for BP device"""
+    headers = {"Authorization": f"Bearer {TOKENS["BPAGRE"]}"}
+    expected = {
+        "avg": {
+            "systolic": round((120 + 110 + 130) / 3),
+            "diastolic": round((80 + 75 + 85) / 3),
+            "pulse": round((70 + 65 + 75) / 3),
+        },
+        "min": {
+            "systolic": 110,
+            "diastolic": 75,
+            "pulse": 65,
+        },
+        "max": {
+            "systolic": 130,
+            "diastolic": 85,
+            "pulse": 75,
+        },
+    }
+    async with httpx.AsyncClient() as client:
+        for agg, expected_vals in expected.items():
+            url = (
+                f"{API_URL}/readings/bp?"
+                f"aggregate={agg}&from_time={RANGE_START.isoformat()}&to_time={RANGE_END.isoformat()}"
+            )
+            res = await client.get(url, headers=headers)
+            res.raise_for_status()
+            data_list = res.json()
+            if not data_list:
+                raise AssertionError(f"No data returned for {agg} in time range")
+            data = data_list[0]
+            for field, expected_val in expected_vals.items():
+                if data[field] != expected_val:
+                    raise AssertionError(f"BloodPressure {agg} {field} expected {expected_val}, got {data[field]}")

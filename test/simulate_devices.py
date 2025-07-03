@@ -17,7 +17,11 @@ TESTS = [
     ("Get Blood Pressure Readings", test_cases.get_blood_pressure),
     ("Test Concurrent Ingestion", test_cases.concurrent_ingestion),
     ("Test Invalid token (401)", test_cases.invalid_token_test),
-    ("Test DB access time", test_cases.db_timing_test)
+    ("Test DB access time", test_cases.db_timing_test),
+    ("Insert Known HeartRate", test_cases.insert_known_hr_values),
+    ("Insert Known BloodPressure", test_cases.insert_known_bp_values),
+    ("Validate HR Aggregates", test_cases.validate_hr_aggregates),
+    ("Validate BP Aggregates", test_cases.validate_bp_aggregates),
 ]
 
 async def run_tests():

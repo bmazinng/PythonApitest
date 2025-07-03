@@ -19,19 +19,15 @@ async def lifespan(app: FastAPI):
         if RESET_DB:
             await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+
+        # Only create patient; devices will register dynamically
         await conn.execute(insert(Patient), [{"patient_id": "P001", "name": "John Smith"}])
-        await conn.execute(insert(Device), [
-            {"device_id": "HR001", "device_type": "heart_rate"},
-            {"device_id": "BP001", "device_type": "blood_pressure"}
-        ])
-        await conn.execute(insert(DevicePatientAssignment), [
-            {"device_id": "HR001", "patient_id": "P001"},
-            {"device_id": "BP001", "patient_id": "P001"}
-        ])
     yield
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(router)
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    #uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+

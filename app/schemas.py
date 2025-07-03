@@ -5,6 +5,7 @@ from datetime import datetime
 class DeviceRegister(BaseModel):
     device_id: str
     device_type: str
+    patient_id: str
 
 class TokenOut(BaseModel):
     access_token: str
